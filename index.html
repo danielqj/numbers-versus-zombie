@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Numbers vs Zombie</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Game Header -->
+        <div class="header">
+            <h1>Numbers vs Zombie</h1>
+            <div class="stats">
+                <div class="stat">
+                    <span class="label">Score:</span>
+                    <span class="value" id="score">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Combo:</span>
+                    <span class="value" id="combo">0</span>
+                </div>
+                <div class="stat">
+                    <span class="label">Difficulty:</span>
+                    <span class="value" id="difficulty">1</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Canvas -->
+        <div class="game-area">
+            <canvas id="gameCanvas" width="1000" height="500"></canvas>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <input 
+                type="text" 
+                id="answerInput" 
+                class="answer-input" 
+                placeholder="Enter answer and press Enter"
+                autocomplete="off"
+            >
+            <div class="feedback" id="feedback"></div>
+        </div>
+
+        <!-- Game Controls -->
+        <div class="controls">
+            <button id="startBtn" class="btn btn-primary">Start Game</button>
+            <button id="pauseBtn" class="btn btn-secondary" disabled>Pause</button>
+            <button id="resetBtn" class="btn btn-secondary">Reset</button>
+        </div>
+
+        <!-- Game Status -->
+        <div class="status" id="gameStatus"></div>
+
+        <!-- Victory Screen -->
+        <div class="victory-screen" id="victoryScreen" style="display: none;">
+            <div class="victory-content">
+                <h2>🎉 You Win! 🎉</h2>
+                <p>You defeated all zombies!</p>
+                <p class="final-score">Final Score: <span id="finalScore">0</span></p>
+                <p class="levels-completed">Levels Completed: <span id="levelsCompleted">0</span></p>
+                <button id="restartBtn" class="btn btn-primary">Play Again</button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div class="game-over-screen" id="gameOverScreen" style="display: none;">
+            <div class="game-over-content">
+                <h2>💀 Game Over 💀</h2>
+                <p>The fortress was destroyed!</p>
+                <p class="final-score">Final Score: <span id="finalScoreOver">0</span></p>
+                <button id="retryBtn" class="btn btn-primary">Try Again</button>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="instructions">
+            <h3>How to Play:</h3>
+            <ul>
+                <li>Zombies appear from the left with math problems on their heads</li>
+                <li>Solve the problem correctly to destroy the zombie</li>
+                <li>Wrong answers make zombies move closer to your fortress</li>
+                <li>Get 5 consecutive correct answers = 5 bonus points</li>
+                <li>Boss stage: Destroy the boss by answering 5 questions correctly in a row</li>
+                <li>Reach 100 points to win!</li>
+                <li>Difficulty increases as you progress - zombies get faster!</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
