@@ -1,657 +1,538 @@
-// Game Constants
-const CANVAS_WIDTH = 1000;
-const CANVAS_HEIGHT = 500;
-const FORTRESS_X = 900;
-const FORTRESS_Y = 250;
-const FORTRESS_WIDTH = 80;
-const FORTRESS_HEIGHT = 80;
-const TARGET_SCORE = 100;
-const BONUS_COMBO = 5;
-const BOSS_COMBO_REQUIRED = 5;
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-// Game State
-let gameState = {
+const scoreEl = document.getElementById("score");
+const baseHealthEl = document.getElementById("baseHealth");
+const streakEl = document.getElementById("streak");
+const waveLabelEl = document.getElementById("waveLabel");
+const overlay = document.getElementById("overlay");
+const startButton = document.getElementById("startButton");
+const answerForm = document.getElementById("answerForm");
+const answerInput = document.getElementById("answerInput");
+const submitButton = document.getElementById("submitButton");
+const resetButton = document.getElementById("resetButton");
+const difficultyRange = document.getElementById("difficultyRange");
+const difficultyText = document.getElementById("difficultyText");
+
+const WIDTH = canvas.width;
+const HEIGHT = canvas.height;
+const BASE_X = WIDTH - 150;
+const WIN_SCORE = 100;
+
+const difficultyNames = ["", "轻松", "普通", "挑战", "困难", "大师"];
+
+let state = createInitialState();
+let lastTime = performance.now();
+let spawnTimer = 0;
+let animationId = null;
+
+function createInitialState() {
+  return {
     running: false,
-    paused: false,
+    gameOver: false,
+    victory: false,
+    bossMode: false,
+    bossReady: false,
     score: 0,
-    combo: 0,
-    difficulty: 1,
-    level: 0,
-    zombiesDefeated: 0,
-    fortressHealth: 100,
-    gameStartTime: null,
-    isBossLevel: false,
-    bossBattleCombo: 0
-};
-
-// Game Objects
-let zombies = [];
-let particles = [];
-let currentProblem = null;
-let gameCanvas;
-let ctx;
-
-// DOM Elements
-let scoreDisplay, comboDisplay, difficultyDisplay;
-let answerInput, feedbackDiv, gameStatus;
-let startBtn, pauseBtn, resetBtn;
-let victoryScreen, gameOverScreen;
-let restartBtn, retryBtn;
-
-// Initialize Game
-function initGame() {
-    gameCanvas = document.getElementById('gameCanvas');
-    ctx = gameCanvas.getContext('2d');
-    
-    scoreDisplay = document.getElementById('score');
-    comboDisplay = document.getElementById('combo');
-    difficultyDisplay = document.getElementById('difficulty');
-    answerInput = document.getElementById('answerInput');
-    feedbackDiv = document.getElementById('feedback');
-    gameStatus = document.getElementById('gameStatus');
-    
-    startBtn = document.getElementById('startBtn');
-    pauseBtn = document.getElementById('pauseBtn');
-    resetBtn = document.getElementById('resetBtn');
-    victoryScreen = document.getElementById('victoryScreen');
-    gameOverScreen = document.getElementById('gameOverScreen');
-    restartBtn = document.getElementById('restartBtn');
-    retryBtn = document.getElementById('retryBtn');
-    
-    // Event Listeners
-    startBtn.addEventListener('click', startGame);
-    pauseBtn.addEventListener('click', togglePause);
-    resetBtn.addEventListener('click', resetGame);
-    answerInput.addEventListener('keypress', handleAnswer);
-    restartBtn.addEventListener('click', restartGameAfterVictory);
-    retryBtn.addEventListener('click', resetGame);
-    
-    // Resize canvas for retina displays
-    const rect = gameCanvas.getBoundingClientRect();
-    gameCanvas.width = rect.width;
-    gameCanvas.height = rect.height;
-    
-    resetGameState();
+    baseHealth: 100,
+    streak: 0,
+    bossStreak: 0,
+    zombies: [],
+    particles: [],
+    floatingTexts: [],
+    shake: 0,
+    cannonFlash: 0,
+    time: 0
+  };
 }
 
-function resetGameState() {
-    gameState = {
-        running: false,
-        paused: false,
-        score: 0,
-        combo: 0,
-        difficulty: 1,
-        level: 0,
-        zombiesDefeated: 0,
-        fortressHealth: 100,
-        gameStartTime: null,
-        isBossLevel: false,
-        bossBattleCombo: 0
-    };
-    
-    zombies = [];
-    particles = [];
-    updateUI();
-    drawGameScreen();
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getDifficulty() {
+  return Number(difficultyRange.value);
+}
+
+function makeProblem(isBoss = false) {
+  const difficulty = getDifficulty();
+  const max = Math.min(9, 4 + difficulty);
+  const min = difficulty >= 4 ? 2 : 1;
+  const a = isBoss ? randomInt(5, 9) : randomInt(min, max);
+  const b = isBoss ? randomInt(5, 9) : randomInt(min, max);
+  return { a, b, answer: a * b };
+}
+
+function spawnZombie(isBoss = false) {
+  const problem = makeProblem(isBoss);
+  const difficulty = getDifficulty();
+  const lane = isBoss ? 2 : randomInt(0, 3);
+  const y = 122 + lane * 94;
+  const zombie = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    x: isBoss ? -170 : -70,
+    y,
+    width: isBoss ? 126 : 64,
+    height: isBoss ? 148 : 82,
+    speed: isBoss ? 18 + difficulty * 7 : 34 + difficulty * 18 + Math.random() * 12,
+    health: isBoss ? 5 : 1,
+    maxHealth: isBoss ? 5 : 1,
+    problem,
+    isBoss,
+    wobble: Math.random() * Math.PI * 2
+  };
+  state.zombies.push(zombie);
+  if (isBoss) {
+    state.bossReady = true;
+    waveLabelEl.textContent = "Boss";
+    addFloatingText("Boss 出现：连续答对 5 题！", WIDTH * 0.42, 82, "#ffc857");
+  }
 }
 
 function startGame() {
-    if (gameState.running && !gameState.paused) return;
-    
-    if (!gameState.running) {
-        resetGameState();
-    }
-    
-    gameState.running = true;
-    gameState.paused = false;
-    gameState.gameStartTime = Date.now();
-    
-    startBtn.disabled = true;
-    pauseBtn.disabled = false;
-    answerInput.focus();
-    
-    victoryScreen.style.display = 'none';
-    gameOverScreen.style.display = 'none';
-    
-    generateNewLevel();
-    gameLoop();
-}
-
-function togglePause() {
-    if (!gameState.running) return;
-    
-    gameState.paused = !gameState.paused;
-    pauseBtn.textContent = gameState.paused ? 'Resume' : 'Pause';
-    
-    if (!gameState.paused) {
-        gameLoop();
-    }
+  state = createInitialState();
+  state.running = true;
+  spawnTimer = 0;
+  overlay.classList.add("hidden");
+  answerInput.disabled = false;
+  submitButton.disabled = false;
+  answerInput.value = "";
+  answerInput.focus();
+  updateHud();
 }
 
 function resetGame() {
-    gameState.running = false;
-    pauseBtn.disabled = true;
-    startBtn.disabled = false;
-    pauseBtn.textContent = 'Pause';
-    answerInput.value = '';
-    feedbackDiv.textContent = '';
-    
-    resetGameState();
-    victoryScreen.style.display = 'none';
-    gameOverScreen.style.display = 'none';
+  state = createInitialState();
+  overlay.classList.remove("hidden");
+  overlay.querySelector("h1").textContent = "Numbers Versus Zombie";
+  overlay.querySelector("p").textContent = "输入僵尸头顶乘法题的答案，保护右边的堡垒。连续答对 5 题会获得 5 分奖励，达到 100 分人类获胜。";
+  startButton.textContent = "开始训练";
+  answerInput.disabled = true;
+  submitButton.disabled = true;
+  answerInput.value = "";
+  updateHud();
 }
 
-function generateNewLevel() {
-    gameState.level++;
-    gameState.isBossLevel = gameState.level % 5 === 0;
-    gameState.difficulty = Math.min(1 + Math.floor(gameState.level / 2), 5);
-    
-    if (gameState.isBossLevel) {
-        gameStatus.textContent = `🔥 BOSS LEVEL ${gameState.level} 🔥 - Answer 5 questions in a row to defeat the boss!`;
-        gameStatus.style.color = '#dc3545';
-        gameState.bossBattleCombo = 0;
-    } else {
-        gameStatus.textContent = `Level ${gameState.level} - Difficulty: ${gameState.difficulty}`;
-        gameStatus.style.color = '#667eea';
+function nearestZombie() {
+  return state.zombies
+    .slice()
+    .sort((a, b) => b.x - a.x)[0];
+}
+
+function handleAnswer(event) {
+  event.preventDefault();
+  if (!state.running) return;
+
+  const target = nearestZombie();
+  if (!target) {
+    answerInput.value = "";
+    addFloatingText("先等僵尸出现", WIDTH * 0.5, 88, "#66c7f4");
+    return;
+  }
+
+  const value = Number(answerInput.value.trim());
+  if (!Number.isFinite(value)) return;
+
+  if (value === target.problem.answer) {
+    correctAnswer(target);
+  } else {
+    wrongAnswer(target);
+  }
+
+  answerInput.value = "";
+  updateHud();
+}
+
+function correctAnswer(target) {
+  state.streak += 1;
+  state.cannonFlash = 0.18;
+
+  if (target.isBoss) {
+    state.bossStreak += 1;
+    target.health = Math.max(0, target.health - 1);
+    burst(target.x + target.width / 2, target.y, "#ffc857", 18);
+    addFloatingText(`Boss 连击 ${state.bossStreak}/5`, target.x + 30, target.y - 70, "#ffc857");
+
+    if (state.bossStreak >= 5) {
+      explodeZombie(target, 25);
+      state.score = WIN_SCORE;
+      winGame();
     }
-    
-    zombies = [];
-    particles = [];
-    gameState.combo = 0;
-    updateUI();
+    return;
+  }
+
+  state.score += 10;
+  explodeZombie(target, 14);
+
+  if (state.streak > 0 && state.streak % 5 === 0) {
+    state.score += 5;
+    addFloatingText("+5 连对奖励", WIDTH * 0.54, 92, "#63d471");
+    burst(WIDTH * 0.54, 112, "#63d471", 22);
+  }
+
+  if (state.score >= WIN_SCORE && !state.bossMode) {
+    beginBossMode();
+  }
 }
 
-function spawnZombie() {
-    const zombie = {
-        x: 50,
-        y: Math.random() * (gameCanvas.height - 60) + 30,
-        width: 40,
-        height: 50,
-        speed: 0.5 + gameState.difficulty * 0.3,
-        health: gameState.isBossLevel ? 3 : 1,
-        maxHealth: gameState.isBossLevel ? 3 : 1,
-        problem: generateProblem(),
-        answered: false,
-        destroyTime: 0,
-        isBoss: gameState.isBossLevel
-    };
-    
-    zombies.push(zombie);
+function wrongAnswer(target) {
+  state.streak = 0;
+  state.bossStreak = 0;
+  state.shake = 0.25;
+  target.x += target.isBoss ? 54 : 82;
+  addFloatingText("错误，僵尸前进！", target.x + 25, target.y - 62, "#ff5c5c");
+  burst(target.x + target.width / 2, target.y + 16, "#ff5c5c", 10);
 }
 
-function generateProblem() {
-    const num1 = Math.floor(Math.random() * 9) + 1;
-    const num2 = Math.floor(Math.random() * 9) + 1;
-    return {
-        num1: num1,
-        num2: num2,
-        answer: num1 * num2
-    };
+function beginBossMode() {
+  state.bossMode = true;
+  state.zombies = [];
+  state.score = 95;
+  state.streak = 0;
+  state.bossStreak = 0;
+  spawnZombie(true);
 }
 
-function handleAnswer(e) {
-    if (e.key !== 'Enter') return;
-    if (!gameState.running || gameState.paused) return;
-    
-    const userAnswer = parseInt(answerInput.value);
-    answerInput.value = '';
-    
-    if (isNaN(userAnswer)) {
-        showFeedback('Please enter a number', 'incorrect');
-        return;
-    }
-    
-    const zombie = findZombieWithProblem();
-    if (!zombie) {
-        showFeedback('No zombie to answer!', 'incorrect');
-        return;
-    }
-    
-    if (userAnswer === zombie.problem.answer) {
-        handleCorrectAnswer(zombie);
-    } else {
-        handleIncorrectAnswer(zombie);
-    }
-    
-    answerInput.focus();
+function explodeZombie(target, count) {
+  state.zombies = state.zombies.filter((zombie) => zombie.id !== target.id);
+  burst(target.x + target.width / 2, target.y, target.isBoss ? "#ffc857" : "#83e377", count);
+  addFloatingText(target.isBoss ? "Boss 爆炸！" : "+10", target.x + 18, target.y - 70, target.isBoss ? "#ffc857" : "#83e377");
 }
 
-function findZombieWithProblem() {
-    return zombies.find(z => !z.answered && z.health > 0);
-}
-
-function handleCorrectAnswer(zombie) {
-    gameState.combo++;
-    
-    // Damage boss or kill regular zombie
-    if (zombie.isBoss) {
-        zombie.health--;
-        gameState.bossBattleCombo++;
-        
-        if (zombie.health === 0) {
-            zombie.answered = true;
-            createExplosion(zombie.x, zombie.y);
-            gameState.score += 10;
-            
-            // Check if boss defeated
-            if (gameState.bossBattleCombo >= BOSS_COMBO_REQUIRED) {
-                gameState.score += 20;
-                showFeedback('🔥 BOSS DEFEATED! 🔥', 'bonus');
-                setTimeout(() => {
-                    if (gameState.score >= TARGET_SCORE) {
-                        winGame();
-                    } else {
-                        generateNewLevel();
-                    }
-                }, 1000);
-            } else {
-                showFeedback('Boss Hit! ' + (BOSS_COMBO_REQUIRED - gameState.bossBattleCombo) + ' more hits needed', 'correct');
-            }
-        } else {
-            showFeedback('Boss Hit! ' + (BOSS_COMBO_REQUIRED - gameState.bossBattleCombo) + ' more hits to defeat!', 'correct');
-            createParticles(zombie.x, zombie.y, 5);
-        }
-    } else {
-        zombie.answered = true;
-        createExplosion(zombie.x, zombie.y);
-        gameState.score += 1;
-        showFeedback('✓ Correct!', 'correct');
-    }
-    
-    // Check for bonus
-    if (gameState.combo === BONUS_COMBO && !gameState.isBossLevel) {
-        gameState.score += 5;
-        showFeedback('🎁 COMBO BONUS +5! 🎁', 'bonus');
-        gameState.combo = 0;
-    }
-    
-    // Check win condition
-    if (gameState.score >= TARGET_SCORE) {
-        winGame();
-    }
-    
-    updateUI();
-}
-
-function handleIncorrectAnswer(zombie) {
-    gameState.combo = 0;
-    gameState.bossBattleCombo = 0;
-    
-    // Move zombie forward
-    zombie.speed += 1;
-    showFeedback('✗ Wrong! Zombie advances!', 'incorrect');
-    updateUI();
-}
-
-function createExplosion(x, y) {
-    createParticles(x, y, 12);
-    
-    // Add visual effect
-    const explosion = {
-        x: x,
-        y: y,
-        radius: 5,
-        maxRadius: 40,
-        duration: 300,
-        startTime: Date.now(),
-        color: '#ff6b6b'
-    };
-    particles.push(explosion);
-}
-
-function createParticles(x, y, count) {
-    for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 * i) / count;
-        const speed = 2 + Math.random() * 3;
-        
-        particles.push({
-            x: x,
-            y: y,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            life: 1,
-            size: 3 + Math.random() * 5,
-            color: `hsl(${Math.random() * 60 + 15}, 100%, 50%)`
-        });
-    }
-}
-
-function showFeedback(message, type) {
-    feedbackDiv.textContent = message;
-    feedbackDiv.className = 'feedback ' + type;
-    
-    setTimeout(() => {
-        feedbackDiv.textContent = '';
-        feedbackDiv.className = 'feedback';
-    }, 1000);
-}
-
-function updateUI() {
-    scoreDisplay.textContent = gameState.score;
-    comboDisplay.textContent = gameState.combo;
-    difficultyDisplay.textContent = gameState.difficulty;
-}
-
-function gameLoop() {
-    if (!gameState.running) return;
-    
-    if (gameState.paused) {
-        drawGameScreen();
-        requestAnimationFrame(gameLoop);
-        return;
-    }
-    
-    // Update game logic
-    updateZombies();
-    updateParticles();
-    checkGameOver();
-    
-    // Spawn new zombies
-    if (zombies.filter(z => z.health > 0 && !z.answered).length < 1 + Math.floor(gameState.difficulty)) {
-        spawnZombie();
-    }
-    
-    // Draw
-    drawGameScreen();
-    
-    requestAnimationFrame(gameLoop);
-}
-
-function updateZombies() {
-    for (let i = zombies.length - 1; i >= 0; i--) {
-        const zombie = zombies[i];
-        
-        if (zombie.answered) {
-            zombie.destroyTime += 16;
-            if (zombie.destroyTime > 300) {
-                zombies.splice(i, 1);
-            }
-        } else if (zombie.health > 0) {
-            zombie.x += zombie.speed;
-            
-            // Check if reached fortress
-            if (zombie.x >= FORTRESS_X) {
-                gameState.fortressHealth -= 1;
-                zombie.answered = true;
-            }
-        }
-    }
-}
-
-function updateParticles() {
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        
-        if (p.vx !== undefined) {
-            // Regular particle
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vy += 0.1; // gravity
-            p.life -= 0.02;
-            
-            if (p.life <= 0) {
-                particles.splice(i, 1);
-            }
-        } else {
-            // Explosion ring
-            const elapsed = Date.now() - p.startTime;
-            p.radius = p.maxRadius * (elapsed / p.duration);
-            
-            if (elapsed > p.duration) {
-                particles.splice(i, 1);
-            }
-        }
-    }
-}
-
-function checkGameOver() {
-    if (gameState.fortressHealth <= 0) {
-        endGame();
-    }
-}
-
-function drawGameScreen() {
-    // Clear canvas
-    ctx.fillStyle = 'rgba(26, 26, 46, 0.9)';
-    ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-    
-    // Draw background grid
-    drawBackgroundGrid();
-    
-    // Draw fortress
-    drawFortress();
-    
-    // Draw zombies
-    drawZombies();
-    
-    // Draw particles
-    drawParticles();
-    
-    // Draw UI on canvas
-    drawCanvasUI();
-}
-
-function drawBackgroundGrid() {
-    ctx.strokeStyle = 'rgba(102, 126, 234, 0.1)';
-    ctx.lineWidth = 1;
-    
-    for (let i = 0; i <= gameCanvas.width; i += 50) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i, gameCanvas.height);
-        ctx.stroke();
-    }
-    
-    for (let i = 0; i <= gameCanvas.height; i += 50) {
-        ctx.beginPath();
-        ctx.moveTo(0, i);
-        ctx.lineTo(gameCanvas.width, i);
-        ctx.stroke();
-    }
-}
-
-function drawFortress() {
-    // Fortress body
-    const healthPercentage = gameState.fortressHealth / 100;
-    ctx.fillStyle = healthPercentage > 0.5 ? '#4CAF50' : 
-                     healthPercentage > 0.25 ? '#FFC107' : '#FF5722';
-    
-    ctx.fillRect(FORTRESS_X, FORTRESS_Y, FORTRESS_WIDTH, FORTRESS_HEIGHT);
-    
-    // Fortress outline
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(FORTRESS_X, FORTRESS_Y, FORTRESS_WIDTH, FORTRESS_HEIGHT);
-    
-    // Tower
-    ctx.fillStyle = '#666';
-    ctx.fillRect(FORTRESS_X + 15, FORTRESS_Y - 20, 50, 20);
-    
-    // Flag
-    ctx.fillStyle = '#FF1744';
-    ctx.fillRect(FORTRESS_X + 60, FORTRESS_Y - 20, 20, 10);
-    
-    // Health bar
-    drawHealthBar(FORTRESS_X, FORTRESS_Y - 15, FORTRESS_WIDTH, 8);
-}
-
-function drawHealthBar(x, y, width, height) {
-    const healthPercentage = Math.max(0, gameState.fortressHealth / 100);
-    
-    // Background
-    ctx.fillStyle = '#333';
-    ctx.fillRect(x, y, width, height);
-    
-    // Health
-    ctx.fillStyle = healthPercentage > 0.5 ? '#4CAF50' : 
-                    healthPercentage > 0.25 ? '#FFC107' : '#FF5722';
-    ctx.fillRect(x, y, width * healthPercentage, height);
-    
-    // Border
-    ctx.strokeStyle = '#FFF';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, width, height);
-}
-
-function drawZombies() {
-    for (const zombie of zombies) {
-        if (zombie.health <= 0 && zombie.answered) continue;
-        
-        // Draw zombie body
-        ctx.fillStyle = zombie.isBoss ? '#8B008B' : '#2ECC71';
-        ctx.fillRect(zombie.x, zombie.y, zombie.width, zombie.height);
-        
-        // Zombie outline
-        ctx.strokeStyle = zombie.isBoss ? '#FF1744' : '#27AE60';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(zombie.x, zombie.y, zombie.width, zombie.height);
-        
-        // Zombie eyes
-        ctx.fillStyle = '#000';
-        ctx.fillRect(zombie.x + 8, zombie.y + 10, 5, 5);
-        ctx.fillRect(zombie.x + 27, zombie.y + 10, 5, 5);
-        
-        // Zombie mouth
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(zombie.x + 20, zombie.y + 25, 5, 0, Math.PI);
-        ctx.stroke();
-        
-        // Health indicator for boss
-        if (zombie.isBoss) {
-            drawHealthBar(zombie.x, zombie.y - 10, zombie.width, 6);
-        }
-        
-        // Draw problem above zombie
-        ctx.fillStyle = '#FFF';
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(
-            `${zombie.problem.num1} × ${zombie.problem.num2}`,
-            zombie.x + zombie.width / 2,
-            zombie.y - 15
-        );
-        
-        // Problem box background
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
-        ctx.fillRect(zombie.x - 10, zombie.y - 35, zombie.width + 20, 25);
-        
-        // Redraw problem on top
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(
-            `${zombie.problem.num1} × ${zombie.problem.num2}`,
-            zombie.x + zombie.width / 2,
-            zombie.y - 15
-        );
-    }
-}
-
-function drawParticles() {
-    for (const p of particles) {
-        if (p.vx !== undefined) {
-            // Regular particle
-            ctx.fillStyle = p.color;
-            ctx.globalAlpha = p.life;
-            ctx.fillRect(p.x, p.y, p.size, p.size);
-            ctx.globalAlpha = 1;
-        } else {
-            // Explosion ring
-            ctx.strokeStyle = p.color;
-            ctx.lineWidth = 3;
-            ctx.globalAlpha = 1 - (p.radius / p.maxRadius);
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-        }
-    }
-}
-
-function drawCanvasUI() {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.font = '14px Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText(
-        `Health: ${Math.max(0, gameState.fortressHealth)}/100`,
-        10,
-        30
-    );
-    
-    if (gameState.isBossLevel) {
-        ctx.fillStyle = '#FF1744';
-        ctx.font = 'bold 14px Arial';
-        ctx.fillText(
-            `Boss Hits: ${gameState.bossBattleCombo}/${BOSS_COMBO_REQUIRED}`,
-            10,
-            50
-        );
-    }
+function damageBase(amount) {
+  state.baseHealth = Math.max(0, state.baseHealth - amount);
+  state.shake = 0.35;
+  burst(BASE_X + 80, HEIGHT - 140, "#ff5c5c", 18);
+  if (state.baseHealth <= 0) {
+    loseGame();
+  }
 }
 
 function winGame() {
-    gameState.running = false;
-    pauseBtn.disabled = true;
-    startBtn.disabled = false;
-    
-    document.getElementById('finalScore').textContent = gameState.score;
-    document.getElementById('levelsCompleted').textContent = gameState.level;
-    
-    // Victory animation
-    playVictoryAnimation();
-    
-    setTimeout(() => {
-        victoryScreen.style.display = 'flex';
-    }, 500);
+  state.running = false;
+  state.victory = true;
+  state.score = WIN_SCORE;
+  answerInput.disabled = true;
+  submitButton.disabled = true;
+  for (let i = 0; i < 110; i += 1) {
+    burst(randomInt(80, WIDTH - 120), randomInt(40, HEIGHT - 80), ["#ffc857", "#63d471", "#66c7f4", "#ffffff"][i % 4], 1);
+  }
+  showOverlay("人类获胜！", "你累积到 100 分，并在 Boss 关连续答对 5 题。堡垒安全了，乘法口诀也更强了。", "再玩一次");
+  updateHud();
 }
 
-function endGame() {
-    gameState.running = false;
-    pauseBtn.disabled = true;
-    startBtn.disabled = false;
-    
-    document.getElementById('finalScoreOver').textContent = gameState.score;
-    
-    gameOverScreen.style.display = 'flex';
+function loseGame() {
+  state.running = false;
+  state.gameOver = true;
+  answerInput.disabled = true;
+  submitButton.disabled = true;
+  showOverlay("堡垒失守", "再试一次，先盯住离堡垒最近的僵尸，稳稳输入答案。", "重新挑战");
+  updateHud();
 }
 
-function restartGameAfterVictory() {
-    victoryScreen.style.display = 'none';
-    resetGame();
-    startGame();
+function showOverlay(title, message, buttonText) {
+  overlay.querySelector("h1").textContent = title;
+  overlay.querySelector("p").textContent = message;
+  startButton.textContent = buttonText;
+  overlay.classList.remove("hidden");
 }
 
-function playVictoryAnimation() {
-    // Create confetti particles
-    for (let i = 0; i < 50; i++) {
-        particles.push({
-            x: Math.random() * gameCanvas.width,
-            y: -20,
-            vx: (Math.random() - 0.5) * 8,
-            vy: Math.random() * 5 + 3,
-            life: 3,
-            size: Math.random() * 8 + 4,
-            color: `hsl(${Math.random() * 360}, 100%, 50%)`
-        });
+function burst(x, y, color, count) {
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 70 + Math.random() * 210;
+    state.particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.45 + Math.random() * 0.55,
+      age: 0,
+      size: 3 + Math.random() * 6,
+      color
+    });
+  }
+}
+
+function addFloatingText(text, x, y, color) {
+  state.floatingTexts.push({ text, x, y, color, age: 0, life: 1.1 });
+}
+
+function update(dt) {
+  state.time += dt;
+
+  if (state.running) {
+    if (!state.bossMode) {
+      spawnTimer -= dt;
+      const interval = Math.max(0.72, 1.8 - getDifficulty() * 0.19);
+      if (spawnTimer <= 0) {
+        spawnZombie(false);
+        spawnTimer = interval;
+      }
+      waveLabelEl.textContent = "普通";
     }
-    
-    // Draw celebration
-    let startTime = Date.now();
-    const animateConfetti = () => {
-        drawGameScreen();
-        drawParticles();
-        
-        updateParticles();
-        
-        if (Date.now() - startTime < 2000) {
-            requestAnimationFrame(animateConfetti);
-        }
-    };
-    
-    animateConfetti();
+
+    for (const zombie of state.zombies) {
+      zombie.x += zombie.speed * dt;
+      zombie.wobble += dt * 6;
+    }
+
+    const attackers = state.zombies.filter((zombie) => zombie.x + zombie.width >= BASE_X + 8);
+    for (const zombie of attackers) {
+      damageBase(zombie.isBoss ? 28 : 15);
+    }
+    state.zombies = state.zombies.filter((zombie) => zombie.x + zombie.width < BASE_X + 8);
+  }
+
+  updateParticles(dt);
+  state.shake = Math.max(0, state.shake - dt);
+  state.cannonFlash = Math.max(0, state.cannonFlash - dt);
 }
 
-// Start game when page loads
-window.addEventListener('DOMContentLoaded', initGame);
+function updateParticles(dt) {
+  for (const particle of state.particles) {
+    particle.age += dt;
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.vy += 240 * dt;
+  }
+  state.particles = state.particles.filter((particle) => particle.age < particle.life);
+
+  for (const text of state.floatingTexts) {
+    text.age += dt;
+    text.y -= 38 * dt;
+  }
+  state.floatingTexts = state.floatingTexts.filter((text) => text.age < text.life);
+}
+
+function draw() {
+  ctx.save();
+  const shakeX = state.shake > 0 ? (Math.random() - 0.5) * 12 : 0;
+  const shakeY = state.shake > 0 ? (Math.random() - 0.5) * 8 : 0;
+  ctx.translate(shakeX, shakeY);
+
+  drawBackground();
+  drawBase();
+  drawCannon();
+  for (const zombie of state.zombies) {
+    drawZombie(zombie);
+  }
+  drawParticles();
+  drawFloatingTexts();
+  ctx.restore();
+}
+
+function drawBackground() {
+  const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+  sky.addColorStop(0, "#182622");
+  sky.addColorStop(0.58, "#253d2a");
+  sky.addColorStop(1, "#4f4a2f");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+  for (let i = 0; i < 32; i += 1) {
+    const x = (i * 173 + 41) % WIDTH;
+    const y = (i * 67 + 27) % 185;
+    ctx.fillRect(x, y, 2, 2);
+  }
+
+  ctx.fillStyle = "#1e2d20";
+  ctx.fillRect(0, HEIGHT - 96, WIDTH, 96);
+  ctx.fillStyle = "rgba(255, 246, 223, 0.08)";
+  for (let y = 122; y <= 404; y += 94) {
+    ctx.fillRect(0, y + 32, BASE_X - 20, 2);
+  }
+
+  ctx.fillStyle = "#5a4730";
+  ctx.fillRect(0, HEIGHT - 55, WIDTH, 55);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+  ctx.fillRect(0, HEIGHT - 55, WIDTH, 10);
+}
+
+function drawBase() {
+  ctx.fillStyle = "#7f8792";
+  ctx.fillRect(BASE_X, HEIGHT - 260, 118, 205);
+  ctx.fillStyle = "#a4adb8";
+  ctx.fillRect(BASE_X - 18, HEIGHT - 280, 154, 28);
+  ctx.fillStyle = "#59616b";
+  for (let i = 0; i < 4; i += 1) {
+    ctx.fillRect(BASE_X - 10 + i * 39, HEIGHT - 303, 26, 35);
+  }
+  ctx.fillStyle = "#2b2b32";
+  ctx.fillRect(BASE_X + 42, HEIGHT - 137, 34, 82);
+
+  const healthWidth = 120 * (state.baseHealth / 100);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+  ctx.fillRect(BASE_X - 2, HEIGHT - 325, 122, 14);
+  ctx.fillStyle = state.baseHealth > 35 ? "#63d471" : "#ff5c5c";
+  ctx.fillRect(BASE_X - 1, HEIGHT - 324, healthWidth, 12);
+}
+
+function drawCannon() {
+  ctx.save();
+  ctx.translate(BASE_X - 20, HEIGHT - 170);
+  ctx.rotate(-0.09);
+  ctx.fillStyle = "#343941";
+  ctx.fillRect(-72, -13, 78, 26);
+  ctx.fillStyle = "#20242b";
+  ctx.fillRect(-84, -8, 18, 16);
+  if (state.cannonFlash > 0) {
+    ctx.fillStyle = "#ffc857";
+    ctx.beginPath();
+    ctx.moveTo(-105, 0);
+    ctx.lineTo(-138, -22);
+    ctx.lineTo(-128, 0);
+    ctx.lineTo(-138, 22);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawZombie(zombie) {
+  const bob = Math.sin(zombie.wobble) * 5;
+  const x = zombie.x;
+  const y = zombie.y + bob;
+  const scale = zombie.isBoss ? 1.55 : 1;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = zombie.isBoss ? "#345a35" : "#4b8b50";
+  ctx.fillRect(20, -18, 36, 46);
+  ctx.fillStyle = zombie.isBoss ? "#527a3d" : "#76b852";
+  ctx.beginPath();
+  ctx.arc(38, -38, 24, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#fff5df";
+  ctx.beginPath();
+  ctx.arc(30, -43, 4, 0, Math.PI * 2);
+  ctx.arc(47, -43, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#151515";
+  ctx.fillRect(29, -44, 2, 2);
+  ctx.fillRect(46, -44, 2, 2);
+
+  ctx.strokeStyle = "#1e321f";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(22, -2);
+  ctx.lineTo(2, 15);
+  ctx.moveTo(54, -2);
+  ctx.lineTo(73, 13);
+  ctx.moveTo(28, 25);
+  ctx.lineTo(19, 49);
+  ctx.moveTo(48, 25);
+  ctx.lineTo(58, 49);
+  ctx.stroke();
+
+  if (zombie.isBoss) {
+    ctx.fillStyle = "#ffc857";
+    ctx.fillRect(20, -73, 36, 8);
+    ctx.fillRect(28, -84, 8, 14);
+    ctx.fillRect(42, -84, 8, 14);
+    drawBossHealth(zombie);
+  }
+  ctx.restore();
+
+  drawProblemBubble(zombie, x + zombie.width * 0.5, y - zombie.height * 0.63);
+}
+
+function drawProblemBubble(zombie, x, y) {
+  ctx.save();
+  ctx.font = zombie.isBoss ? "900 31px Segoe UI, Microsoft YaHei, sans-serif" : "900 24px Segoe UI, Microsoft YaHei, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const text = `${zombie.problem.a} x ${zombie.problem.b}`;
+  const width = zombie.isBoss ? 126 : 90;
+  const height = zombie.isBoss ? 48 : 38;
+
+  ctx.fillStyle = zombie.isBoss ? "#ffe8a3" : "#fff6df";
+  roundRect(x - width / 2, y - height / 2, width, height, 8);
+  ctx.fill();
+  ctx.strokeStyle = zombie.isBoss ? "#ffc857" : "#2f3b2f";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fillStyle = "#24170b";
+  ctx.fillText(text, x, y + 1);
+  ctx.restore();
+}
+
+function drawBossHealth(zombie) {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
+  ctx.fillRect(-2, 58, 80, 9);
+  ctx.fillStyle = "#ff5c5c";
+  ctx.fillRect(-1, 59, 78 * (zombie.health / zombie.maxHealth), 7);
+}
+
+function drawParticles() {
+  for (const particle of state.particles) {
+    const alpha = 1 - particle.age / particle.life;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(particle.x, particle.y, particle.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawFloatingTexts() {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "900 24px Segoe UI, Microsoft YaHei, sans-serif";
+  for (const text of state.floatingTexts) {
+    const alpha = 1 - text.age / text.life;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#16110b";
+    ctx.fillText(text.text, text.x + 2, text.y + 3);
+    ctx.fillStyle = text.color;
+    ctx.fillText(text.text, text.x, text.y);
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function roundRect(x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+}
+
+function updateHud() {
+  scoreEl.textContent = state.score;
+  baseHealthEl.textContent = state.baseHealth;
+  streakEl.textContent = state.bossMode ? `${state.bossStreak}/5` : state.streak;
+  if (!state.running && !state.bossMode) waveLabelEl.textContent = state.victory ? "胜利" : state.gameOver ? "失败" : "准备";
+}
+
+function updateDifficultyLabel() {
+  difficultyText.textContent = difficultyNames[getDifficulty()];
+}
+
+function loop(now) {
+  const dt = Math.min(0.04, (now - lastTime) / 1000);
+  lastTime = now;
+  update(dt);
+  draw();
+  updateHud();
+  animationId = requestAnimationFrame(loop);
+}
+
+startButton.addEventListener("click", startGame);
+resetButton.addEventListener("click", resetGame);
+answerForm.addEventListener("submit", handleAnswer);
+difficultyRange.addEventListener("input", updateDifficultyLabel);
+
+updateDifficultyLabel();
+updateHud();
+draw();
+animationId = requestAnimationFrame(loop);

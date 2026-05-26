@@ -1,95 +1,58 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Numbers vs Zombie</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Numbers Versus Zombie</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Game Header -->
-        <div class="header">
-            <h1>Numbers vs Zombie</h1>
-            <div class="stats">
-                <div class="stat">
-                    <span class="label">Score:</span>
-                    <span class="value" id="score">0</span>
-                </div>
-                <div class="stat">
-                    <span class="label">Combo:</span>
-                    <span class="value" id="combo">0</span>
-                </div>
-                <div class="stat">
-                    <span class="label">Difficulty:</span>
-                    <span class="value" id="difficulty">1</span>
-                </div>
-            </div>
-        </div>
+  <main class="game-shell">
+    <section class="hud" aria-label="游戏状态">
+      <div>
+        <p class="label">分数</p>
+        <strong id="score">0</strong>
+      </div>
+      <div>
+        <p class="label">堡垒生命</p>
+        <strong id="baseHealth">100</strong>
+      </div>
+      <div>
+        <p class="label">连续答对</p>
+        <strong id="streak">0</strong>
+      </div>
+      <div>
+        <p class="label">模式</p>
+        <strong id="waveLabel">准备</strong>
+      </div>
+    </section>
 
-        <!-- Game Canvas -->
-        <div class="game-area">
-            <canvas id="gameCanvas" width="1000" height="500"></canvas>
-        </div>
+    <section class="arena-wrap" aria-label="游戏区域">
+      <canvas id="gameCanvas" width="1100" height="560" aria-label="乘法僵尸游戏画面"></canvas>
+      <div id="overlay" class="overlay">
+        <h1>Numbers Versus Zombie</h1>
+        <p>输入僵尸头顶乘法题的答案，保护右边的堡垒。连续答对 5 题会获得 5 分奖励，达到 100 分人类获胜。</p>
+        <button id="startButton" type="button">开始训练</button>
+      </div>
+    </section>
 
-        <!-- Input Area -->
-        <div class="input-area">
-            <input 
-                type="text" 
-                id="answerInput" 
-                class="answer-input" 
-                placeholder="Enter answer and press Enter"
-                autocomplete="off"
-            >
-            <div class="feedback" id="feedback"></div>
-        </div>
+    <section class="control-panel" aria-label="游戏控制">
+      <form id="answerForm" class="answer-form">
+        <label for="answerInput">答案</label>
+        <input id="answerInput" inputmode="numeric" autocomplete="off" placeholder="例如 12" disabled>
+        <button id="submitButton" type="submit" disabled>发射</button>
+      </form>
 
-        <!-- Game Controls -->
-        <div class="controls">
-            <button id="startBtn" class="btn btn-primary">Start Game</button>
-            <button id="pauseBtn" class="btn btn-secondary" disabled>Pause</button>
-            <button id="resetBtn" class="btn btn-secondary">Reset</button>
-        </div>
+      <div class="difficulty">
+        <label for="difficultyRange">难度</label>
+        <input id="difficultyRange" type="range" min="1" max="5" value="2">
+        <span id="difficultyText">普通</span>
+      </div>
 
-        <!-- Game Status -->
-        <div class="status" id="gameStatus"></div>
+      <button id="resetButton" class="ghost-button" type="button">重新开始</button>
+    </section>
+  </main>
 
-        <!-- Victory Screen -->
-        <div class="victory-screen" id="victoryScreen" style="display: none;">
-            <div class="victory-content">
-                <h2>🎉 You Win! 🎉</h2>
-                <p>You defeated all zombies!</p>
-                <p class="final-score">Final Score: <span id="finalScore">0</span></p>
-                <p class="levels-completed">Levels Completed: <span id="levelsCompleted">0</span></p>
-                <button id="restartBtn" class="btn btn-primary">Play Again</button>
-            </div>
-        </div>
-
-        <!-- Game Over Screen -->
-        <div class="game-over-screen" id="gameOverScreen" style="display: none;">
-            <div class="game-over-content">
-                <h2>💀 Game Over 💀</h2>
-                <p>The fortress was destroyed!</p>
-                <p class="final-score">Final Score: <span id="finalScoreOver">0</span></p>
-                <button id="retryBtn" class="btn btn-primary">Try Again</button>
-            </div>
-        </div>
-
-        <!-- Instructions -->
-        <div class="instructions">
-            <h3>How to Play:</h3>
-            <ul>
-                <li>Zombies appear from the left with math problems on their heads</li>
-                <li>Solve the problem correctly to destroy the zombie</li>
-                <li>Wrong answers make zombies move closer to your fortress</li>
-                <li>Get 5 consecutive correct answers = 5 bonus points</li>
-                <li>Boss stage: Destroy the boss by answering 5 questions correctly in a row</li>
-                <li>Reach 100 points to win!</li>
-                <li>Difficulty increases as you progress - zombies get faster!</li>
-            </ul>
-        </div>
-    </div>
-
-    <script src="game.js"></script>
+  <script src="game.js"></script>
 </body>
 </html>
